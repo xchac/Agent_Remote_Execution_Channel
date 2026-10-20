@@ -34,8 +34,14 @@ ipconfig getifaddr en0
 
 ```bash
 git fetch origin
-git switch main
-git pull --ff-only
+git switch --detach origin/main
+```
+
+这里使用 detached HEAD 是为了避开历史重写后旧本地分支与新远端 `main` 的分叉问题。
+如果需要在 Mac 上继续提交，再基于当前提交创建新的本地分支：
+
+```bash
+git switch -c codex/mac-m4
 ```
 
 首次实施安装依赖：
