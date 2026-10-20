@@ -49,7 +49,7 @@ In a second terminal, inject the same `AREC_HMAC_SECRET` and run:
 ```bash
 export AREC_GATEWAY_DATA_ADDR="127.0.0.1:9000"
 export AREC_AGENT_ID="mac-a"
-./build/data_plane/arec-data-plane
+./build/data_plane/mac/arec-data-plane
 ```
 
 In a third terminal, inject the same `AREC_BOOTSTRAP_KEY`, activate the virtual

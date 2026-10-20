@@ -81,7 +81,7 @@ def main() -> int:
         temp = Path(directory)
         gateway_bin = temp / "arec-gateway"
         audit_path = temp / "audit.jsonl"
-        data_plane_bin = ROOT / "build" / "data_plane" / "arec-data-plane"
+        data_plane_bin = ROOT / "build" / "data_plane" / "mac" / "arec-data-plane"
         if not data_plane_bin.exists():
             raise RuntimeError("build the data plane before running the smoke test")
 
