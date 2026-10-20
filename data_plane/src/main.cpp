@@ -1,58 +1,113 @@
-#include <asio.hpp>
-
+#include <atomic>
 #include <cstdlib>
 #include <iostream>
-#include <stdexcept>
+#include <memory>
 #include <string>
-#include <thread>
 
-#include "arec/data_plane.hpp"
+#include <Windows.h>
+
+#include "arec/data_plane_client.hpp"
+#include "arec/execution_engine.hpp"
 
 namespace {
 
-std::string EnvOr(const char* name, const std::string& fallback) {
-  const char* value = std::getenv(name);
-  if (value == nullptr || *value == '\0') {
-    return fallback;
-  }
-  return value;
+arec::DataPlaneClient* g_client = nullptr;
+
+BOOL WINAPI console_handler(DWORD event) {
+    if (event == CTRL_C_EVENT || event == CTRL_BREAK_EVENT || event == CTRL_CLOSE_EVENT) {
+        if (g_client != nullptr) {
+            g_client->stop();
+        }
+        return TRUE;
+    }
+    return FALSE;
+}
+
+void split_address(
+    const std::string& address,
+    std::string& host,
+    std::string& port) {
+    const auto separator = address.rfind(':');
+    if (separator == std::string::npos ||
+        separator == 0U ||
+        separator + 1U >= address.size()) {
+        throw std::invalid_argument("gateway address must use host:port");
+    }
+    host = address.substr(0U, separator);
+    port = address.substr(separator + 1U);
+}
+
+std::string optional_argument(
+    int argc,
+    char** argv,
+    const std::string& name) {
+    for (int index = 1; index + 1 < argc; ++index) {
+        if (name == argv[index]) {
+            return argv[index + 1];
+        }
+    }
+    return {};
+}
+
+std::string environment_value(const char* name) {
+#ifdef _WIN32
+    char* value = nullptr;
+    std::size_t length = 0;
+    if (_dupenv_s(&value, &length, name) != 0 || value == nullptr) {
+        return {};
+    }
+    std::string result(value);
+    std::free(value);
+    return result;
+#else
+    const char* value = std::getenv(name);
+    return value != nullptr ? std::string(value) : std::string();
+#endif
 }
 
 }  // namespace
 
-int main() {
-  const std::string secret = EnvOr("AREC_HMAC_SECRET", "");
-  if (secret.empty()) {
-    std::cerr << "arec-data-plane: AREC_HMAC_SECRET is required\n";
-    return 2;
-  }
-  arec::DataPlaneConfig config;
-  config.gateway_address =
-      EnvOr("AREC_GATEWAY_DATA_ADDR", "127.0.0.1:9000");
-  config.agent_id = EnvOr("AREC_AGENT_ID", "mac-a");
-  config.hmac_secret = secret;
+int main(int argc, char** argv) {
+    try {
+        std::string gateway_address =
+            optional_argument(argc, argv, "--gateway");
+        if (gateway_address.empty()) {
+            gateway_address = environment_value("AREC_GATEWAY_DATA_ADDR");
+        }
+        if (gateway_address.empty()) {
+            gateway_address = "127.0.0.1:9000";
+        }
 
-  try {
-    arec::DataPlane data_plane(config);
-    std::thread worker([&data_plane]() { data_plane.Run(); });
+        std::string agent_id = optional_argument(argc, argv, "--agent-id");
+        if (agent_id.empty()) {
+            agent_id = environment_value("AREC_AGENT_ID");
+        }
+        if (agent_id.empty()) {
+            agent_id = "windows-b";
+        }
 
-    asio::io_context signal_context;
-    asio::signal_set signals(signal_context, SIGINT, SIGTERM);
-    signals.async_wait([&](const asio::error_code&, int) {
-      data_plane.Stop();
-      signal_context.stop();
-    });
-    std::cerr << "arec-data-plane: connecting to " << config.gateway_address
-              << " as " << config.agent_id << '\n';
-    signal_context.run();
-    data_plane.Stop();
-    if (worker.joinable()) {
-      worker.join();
+        const std::string secret = environment_value("AREC_HMAC_SECRET");
+        if (secret.empty()) {
+            std::cerr << "AREC_HMAC_SECRET is required\n";
+            return 2;
+        }
+
+        arec::DataPlaneConfig config;
+        split_address(gateway_address, config.host, config.port);
+        config.agent_id = agent_id;
+
+        auto engine = std::make_shared<arec::ExecutionEngine>(secret);
+        arec::DataPlaneClient client(config, engine);
+        g_client = &client;
+        SetConsoleCtrlHandler(console_handler, TRUE);
+
+        std::cout << "AREC data plane starting\n";
+        client.run();
+        SetConsoleCtrlHandler(console_handler, FALSE);
+        g_client = nullptr;
+        return 0;
+    } catch (const std::exception& exception) {
+        std::cerr << "startup failed: " << exception.what() << '\n';
+        return 1;
     }
-  } catch (const std::exception& error) {
-    std::cerr << "arec-data-plane: fatal: " << error.what() << '\n';
-    return 1;
-  }
-  return 0;
 }
-
