@@ -10,6 +10,8 @@ macOS 或 Windows 数据面。数据面使用 4 字节大端长度前缀的 JSON
 - Windows M1-M3 数据面、Job Object 进程树终止及 mock gateway 测试。
 - `system_info`、`exec_command`、`read_file`，三目标路由、幂等、限流和 JSONL 审计。
 
+实际双机联调步骤见 [docs/AREC_M4_RUNBOOK.md](docs/AREC_M4_RUNBOOK.md)。
+
 ## macOS 构建
 
 ```bash

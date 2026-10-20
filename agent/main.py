@@ -19,6 +19,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--target", choices=("darwin", "windows", "auto"), default="auto")
     parser.add_argument("--read-file", type=Path, default=Path("README.md"))
     parser.add_argument(
+        "--remote-read-file",
+        help="path as seen by the target execution endpoint; required for windows dry-run",
+    )
+    parser.add_argument(
         "--prompt",
         default="Inspect the available remote systems, then answer the user's request.",
     )
@@ -41,6 +45,7 @@ def main(argv: list[str] | None = None) -> int:
             outcomes = run_dry_run(
                 gateway,
                 read_file=arguments.read_file,
+                remote_read_file=arguments.remote_read_file,
                 target=arguments.target,
             )
             return 0 if outcomes else 1

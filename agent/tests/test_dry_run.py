@@ -66,6 +66,34 @@ class DryRunTest(unittest.TestCase):
             )
         self.assertEqual([step["status"] for step in outcomes], ["ok", "skipped", "skipped"])
 
+    def test_windows_plan_uses_windows_command_and_remote_path(self) -> None:
+        gateway = FakeGateway(("system_info", "exec_command", "read_file"))
+        remote_path = r"F:\Code\Agent_Remote_Execution_Channel\README.md"
+        outcomes = run_dry_run(
+            gateway,
+            read_file=Path("unused-local-path"),
+            remote_read_file=remote_path,
+            target="windows",
+            output=lambda _: None,
+        )
+
+        self.assertEqual(len(outcomes), 3)
+        tool_calls = [call for call in gateway.calls if call[0] == "execute"]
+        self.assertEqual(tool_calls[1][2]["params"]["command"], "ver")
+        self.assertEqual(tool_calls[2][2]["params"]["path"], remote_path)
+
+    def test_windows_plan_requires_remote_path(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "input.txt"
+            path.write_text("hello", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "remote_read_file"):
+                run_dry_run(
+                    FakeGateway(("system_info",)),
+                    read_file=path,
+                    target="windows",
+                    output=lambda _: None,
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

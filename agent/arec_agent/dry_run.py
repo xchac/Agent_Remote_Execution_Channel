@@ -14,23 +14,39 @@ def run_dry_run(
     gateway: GatewayClient,
     *,
     read_file: Path,
+    remote_read_file: str | None = None,
     target: str = "darwin",
     output: Callable[[str], None] = print,
     registry: IdempotencyRegistry | None = None,
 ) -> list[dict[str, Any]]:
-    resolved_file = read_file.resolve()
-    if not resolved_file.exists():
-        raise ValueError(f"dry-run file does not exist: {resolved_file}")
+    if remote_read_file is not None:
+        file_path = remote_read_file.strip()
+        if not file_path:
+            raise ValueError("remote read-file path must not be empty")
+    else:
+        if target == "windows":
+            raise ValueError("remote_read_file is required when target is windows")
+        resolved_file = read_file.resolve()
+        if not resolved_file.exists():
+            raise ValueError(f"dry-run file does not exist: {resolved_file}")
+        file_path = str(resolved_file)
+
+    if target == "windows":
+        command = "ver"
+    elif target == "darwin":
+        command = "uname -s"
+    else:
+        command = "echo AREC"
 
     session = gateway.create_session(DEFAULT_TOOLS)
     token = str(session["token"])
     available = {tool["name"] for tool in gateway.list_tools(token)}
     plan: list[tuple[str, dict[str, Any], str]] = [
         ("system_info", {}, target),
-        ("exec_command", {"command": "uname -s"}, target),
+        ("exec_command", {"command": command}, target),
         (
             "read_file",
-            {"path": str(resolved_file), "max_bytes": 65536},
+            {"path": file_path, "max_bytes": 65536},
             target,
         ),
     ]
