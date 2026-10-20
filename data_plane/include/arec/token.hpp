@@ -6,29 +6,27 @@
 
 namespace arec {
 
-struct TokenClaims {
-    int version = 1;
-    std::string token_id;
-    std::string session_id;
-    std::vector<std::string> allowed_tools;
-    std::int64_t issued_at = 0;
-    std::int64_t expires_at = 0;
-    std::int32_t max_calls = 0;
+struct CapabilityPayload {
+  int version = 0;
+  std::string token_id;
+  std::string session_id;
+  std::vector<std::string> allowed_tools;
+  std::int64_t issued_at = 0;
+  std::int64_t expires_at = 0;
+  int max_calls = 0;
 };
 
-struct TokenValidation {
-    bool ok = false;
-    std::string error;
-    TokenClaims claims;
-};
+bool VerifyCapabilityToken(const std::string& token, const std::string& secret,
+                           std::int64_t now_unix,
+                           CapabilityPayload* payload,
+                           std::string* error = nullptr);
 
-std::string make_capability_token(const TokenClaims& claims, const std::string& secret);
+std::string SignCapabilityToken(const CapabilityPayload& payload,
+                                const std::string& secret);
 
-TokenValidation validate_capability_token(
-    const std::string& token,
-    const std::string& secret,
-    const std::string& session_id,
-    const std::string& required_tool,
-    std::int64_t now_seconds);
+std::string Base64UrlEncode(const std::vector<std::uint8_t>& value);
+bool Base64UrlDecode(const std::string& value,
+                     std::vector<std::uint8_t>* decoded);
 
 }  // namespace arec
+
