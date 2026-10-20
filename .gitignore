@@ -1,0 +1,16 @@
+.DS_Store
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+build/
+cmake-build-*/
+
+gateway/bin/
+var/
+*.log
+
+agent/.env
+.env
+
