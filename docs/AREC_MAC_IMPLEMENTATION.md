@@ -40,7 +40,7 @@ M5 再补齐：
 - 数据面帧：4 字节大端长度加 JSON，最大 4 MiB。
 - 协议版本：`protocol_version: "1"`。
 - 状态：`pending | running | ok | timeout | failed | unknown`。
-- 错误码：以总规划第 6.2 节为准。
+- 错误码：以总规划第 6.2 节为准，查询状态过期或不存在时使用 `REQUEST_STATE_UNAVAILABLE` 并返回 `unknown`。
 - 默认令牌有效期：15 分钟。
 - 默认最大调用次数：100。
 - 默认请求截止时间：5000 ms，最大 30000 ms。

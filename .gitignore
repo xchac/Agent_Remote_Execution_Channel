@@ -4,8 +4,11 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 
-build/
-cmake-build-*/
+/build/
+/cmake-build-*/
+/out/
+/vcpkg_installed/
+/.vs/
 
 gateway/bin/
 var/
@@ -13,4 +16,8 @@ var/
 
 agent/.env
 .env
+
+*.user
+*.suo
+*.VC.db
 

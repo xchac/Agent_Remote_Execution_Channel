@@ -8,6 +8,8 @@
 >
 > 最终形态：Mac 控制面 + Mac/Windows 双执行端 + Python Agent
 
+> 实施状态（2026-10-21）：Windows M1-M3 已完成，Debug 单元测试和回环 mock gateway 集成测试通过。
+
 ## 1. 项目目标
 
 AREC 要验证一个核心命题：远程工具调用的可靠性不能依赖 Agent 猜测，必须由协议显式表达。
@@ -128,6 +130,7 @@ AREC 要验证一个核心命题：远程工具调用的可靠性不能依赖 Ag
 | `OUTPUT_TOO_LARGE` | 执行端 | `false` |
 | `PROTOCOL_ERROR` | 网关或执行端 | `false` |
 | `IDEMPOTENCY_CONFLICT` | 执行端 | `false` |
+| `REQUEST_STATE_UNAVAILABLE` | 执行端 | `false`，结果状态为 `unknown` |
 
 `retryable` 是服务端建议，不是 Agent 无需判断的授权。Agent 最终重试策略还必须考虑工具是否幂等和业务上下文。
 

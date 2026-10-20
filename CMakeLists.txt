@@ -12,17 +12,23 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "AppleClang|Clang|GNU")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-find_package(nlohmann_json CONFIG REQUIRED)
-
-find_path(ASIO_INCLUDE_DIR asio.hpp)
-if(NOT ASIO_INCLUDE_DIR)
-  message(FATAL_ERROR "standalone Asio headers not found; install with: brew install asio")
+if(APPLE)
+  find_package(nlohmann_json CONFIG REQUIRED)
+  find_path(ASIO_INCLUDE_DIR asio.hpp)
+  if(NOT ASIO_INCLUDE_DIR)
+    message(FATAL_ERROR "standalone Asio headers not found; install with: brew install asio")
+  endif()
+  add_library(asio::asio INTERFACE IMPORTED)
+  set_target_properties(asio::asio PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES "${ASIO_INCLUDE_DIR}"
+    INTERFACE_COMPILE_DEFINITIONS ASIO_STANDALONE
+  )
+elseif(WIN32)
+  find_package(asio CONFIG REQUIRED)
+  find_package(nlohmann_json CONFIG REQUIRED)
+else()
+  message(FATAL_ERROR "AREC supports macOS and Windows only")
 endif()
-add_library(asio::asio INTERFACE IMPORTED)
-set_target_properties(asio::asio PROPERTIES
-  INTERFACE_INCLUDE_DIRECTORIES "${ASIO_INCLUDE_DIR}"
-  INTERFACE_COMPILE_DEFINITIONS ASIO_STANDALONE
-)
 
 add_subdirectory(data_plane)
 
