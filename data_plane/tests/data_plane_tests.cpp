@@ -253,6 +253,40 @@ void TestDataPlaneIntegration() {
     Check(queried["type"] == "query_response" &&
               queried["status"] == "ok",
           "data-plane query failed");
+
+    auto unauthorized = request;
+    unauthorized["request_id"] = "request-unauthorized";
+    unauthorized["token"] = token + "x";
+    SendJson(socket, unauthorized);
+    const auto unauthorized_response = ReadJson(socket, gateway_decoder);
+    Check(unauthorized_response["status"] == "failed" &&
+              unauthorized_response["error_code"] == "UNAUTHORIZED",
+          "unauthorized token was not rejected");
+
+    const nlohmann::json conflicting {
+        {"type", "request"},
+        {"protocol_version", "1"},
+        {"request_id", "request-conflict"},
+        {"session_id", payload.session_id},
+        {"tool", "exec_command"},
+        {"params", {{"command", "true"}}},
+        {"idempotency_key", "idem-integration"},
+        {"deadline_ms", 1000},
+        {"token", token},
+    };
+    SendJson(socket, conflicting);
+    const auto conflict_response = ReadJson(socket, gateway_decoder);
+    Check(conflict_response["status"] == "failed" &&
+              conflict_response["error_code"] == "IDEMPOTENCY_CONFLICT",
+          "idempotency conflict was not rejected");
+
+    SendJson(socket, {{"type", "query"},
+                      {"protocol_version", "1"},
+                      {"request_id", "request-missing"}});
+    const auto missing_query = ReadJson(socket, gateway_decoder);
+    Check(missing_query["type"] == "query_response" &&
+              missing_query["status"] == "unknown",
+          "missing query did not return unknown");
     socket.close();
 
     asio::ip::tcp::socket reconnected(context);

@@ -302,7 +302,7 @@ func (g *Gateway) handleExecute(writer http.ResponseWriter, request *http.Reques
 	record, _ := g.state.Update(requestID, func(record *state.Record) {
 		record.AgentID = endpoint.AgentID
 		record.Platform = endpoint.Platform
-		record.Status = protocol.StatusPending
+		record.Status = protocol.StatusRunning
 	})
 	g.sessions.SetLastPlatform(info.SessionID, endpoint.Platform)
 

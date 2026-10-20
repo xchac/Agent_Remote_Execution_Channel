@@ -8,6 +8,10 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+if(CMAKE_CXX_COMPILER_ID MATCHES "AppleClang|Clang|GNU")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
 find_package(nlohmann_json CONFIG REQUIRED)
 
 find_path(ASIO_INCLUDE_DIR asio.hpp)
