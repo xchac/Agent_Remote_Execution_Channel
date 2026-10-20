@@ -1,5 +1,5 @@
 module arec/gateway
 
-go 1.26.0
+go 1.24
 
-require golang.org/x/time v0.16.0
+require golang.org/x/time v0.12.0

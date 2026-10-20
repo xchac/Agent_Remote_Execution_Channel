@@ -283,6 +283,39 @@ func TestExecuteRoutingIdempotencyAndAuditRedaction(t *testing.T) {
 		t.Fatalf("expected idempotency conflict: %d %+v", status, payload)
 	}
 
+	autoAgentDone := make(chan error, 1)
+	go func() {
+		message, err := readAgentMessage(conn)
+		if err != nil {
+			autoAgentDone <- err
+			return
+		}
+		dispatchCount.Add(1)
+		result, _ := json.Marshal(map[string]any{"hostname": "windows-auto"})
+		autoAgentDone <- writeAgentMessage(conn, transport.Message{
+			Type:            "response",
+			ProtocolVersion: protocol.Version,
+			RequestID:       message.RequestID,
+			Status:          protocol.StatusOK,
+			Result:          result,
+			Platform:        "windows",
+			ExecutedAt:      time.Now().UTC().Format(time.RFC3339),
+		})
+	}()
+	status, autoResponse := system.request(t, http.MethodPost, "/execute", created.Token, map[string]any{
+		"tool":            "system_info",
+		"params":          map[string]any{},
+		"target":          "auto",
+		"idempotency_key": "auto-key",
+		"deadline_ms":     2000,
+	})
+	if status != http.StatusOK || autoResponse["platform"] != "windows" {
+		t.Fatalf("auto route did not prefer the session's recent windows agent: %d %+v", status, autoResponse)
+	}
+	if err := <-autoAgentDone; err != nil {
+		t.Fatal(err)
+	}
+
 	auditBody, err := os.ReadFile(system.audit)
 	if err != nil {
 		t.Fatal(err)

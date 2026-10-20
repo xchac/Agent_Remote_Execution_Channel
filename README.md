@@ -1,56 +1,68 @@
-# AREC
+# Agent Remote Execution Channel
 
-AREC（Agent Remote Execution Channel）是面向异构执行端的 Agent 远程工具调用通道。
+AREC is a controlled-environment demonstration of reliable remote tool calls.
+The Mac control plane routes OpenAI-compatible tool calls to Mac and Windows
+data planes over length-prefixed JSON frames.
 
-当前仓库完成了 Windows 数据面的 M1-M3：
+## Build
 
-- 长度前缀 JSON 帧编解码。
-- 网关反向连接、注册、自动重连和状态查询。
-- HMAC-SHA256 能力令牌验证。
-- `system_info`、`exec_command`、`read_file`。
-- 10 分钟 / 1024 条幂等与请求状态缓存。
-- Windows Job Object 子进程树终止。
-- 单元测试与回环 mock gateway 集成测试。
+```bash
+go -C gateway mod download
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r agent/requirements.txt
 
-完整架构见 [ARCHITECTURE.md](ARCHITECTURE.md)，实施规划见 [docs/AREC_PROJECT_PLAN.md](docs/AREC_PROJECT_PLAN.md)。
-
-## 构建
-
-使用 VS 2022 Developer PowerShell，或直接调用 VS 自带 CMake：
-
-```powershell
-$cmake = 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe'
-$toolchain = 'C:\Program Files\Microsoft Visual Studio\2022\Community\VC\vcpkg\scripts\buildsystems\vcpkg.cmake'
-
-& $cmake -S . -B build -G 'Visual Studio 17 2022' -A x64 `
-  "-DCMAKE_TOOLCHAIN_FILE=$toolchain" `
-  -DVCPKG_TARGET_TRIPLET=x64-windows `
-  -DBUILD_TESTING=ON
-
-& $cmake --build build --config Debug --parallel
+cmake -S . -B build -G Ninja \
+  -DCMAKE_PREFIX_PATH="$(brew --prefix)" \
+  -DCMAKE_BUILD_TYPE=Debug
+cmake --build build
 ```
 
-vcpkg 依赖由 `vcpkg.json` 管理。
+## Test
 
-## 测试
-
-```powershell
-$ctest = 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe'
-& $ctest --test-dir build -C Debug --output-on-failure
+```bash
+go -C gateway test -race ./...
+python -m unittest discover -s agent/tests -v
+ctest --test-dir build --output-on-failure
+python scripts/smoke_local.py
 ```
 
-测试覆盖协议分帧、令牌、幂等、超时、未授权、协议错误，以及断线重连后的状态查询。
+## Run
 
-## 运行
+Configure secrets only through the process environment. Use placeholders such
+as `YOUR_BOOTSTRAP_KEY_HERE` in notes or examples; never add real values to the
+repository.
 
-密钥只能通过环境变量注入，不得写入脚本或仓库：
-
-```powershell
-$env:AREC_GATEWAY_DATA_ADDR = '<MAC_LAN_IP>:9000'
-$env:AREC_AGENT_ID = 'windows-b'
-$env:AREC_HMAC_SECRET = '<REDACTED>'
-
-.\build\Debug\arec-data-plane.exe
+```bash
+read -r -s AREC_BOOTSTRAP_KEY
+export AREC_BOOTSTRAP_KEY
+read -r -s AREC_HMAC_SECRET
+export AREC_HMAC_SECRET
+export AREC_HTTP_ADDR=":8080"
+export AREC_DATA_ADDR=":9000"
+export AREC_AUDIT_PATH="var/audit/arec-audit.jsonl"
+go -C gateway run ./cmd/arec-gateway
 ```
 
-当前 Windows 端只连接 Go 网关的数据面 TCP 端口。Mac 控制面、Python Agent 和 Mac 数据面按 [docs/AREC_MAC_IMPLEMENTATION.md](docs/AREC_MAC_IMPLEMENTATION.md) 在 Mac 上实施。
+In a second terminal, inject the same `AREC_HMAC_SECRET` and run:
+
+```bash
+export AREC_GATEWAY_DATA_ADDR="127.0.0.1:9000"
+export AREC_AGENT_ID="mac-a"
+./build/data_plane/arec-data-plane
+```
+
+In a third terminal, inject the same `AREC_BOOTSTRAP_KEY`, activate the virtual
+environment, and run the fixed tool-chain check:
+
+```bash
+export AREC_GATEWAY_URL="http://127.0.0.1:8080"
+python -m agent.main --dry-run --target darwin --read-file README.md
+```
+
+Real model mode additionally reads `OPENAI_API_KEY`, `OPENAI_MODEL`, and
+optionally `OPENAI_BASE_URL` from the environment.
+
+This first version implements `system_info`, `exec_command`, and `read_file`.
+It is not a production remote-execution platform and has no OS sandbox or
+transport encryption.
