@@ -7,6 +7,8 @@
 #include <iomanip>
 #include <sstream>
 
+#include "arec/tools.hpp"
+
 namespace arec {
 
 bool IsFinalStatus(const std::string& status) {
@@ -41,7 +43,8 @@ std::string CanonicalParamsHash(const nlohmann::json& params) {
 nlohmann::json ToolDefinitions() {
   return nlohmann::json::array(
       {ToolDefinition("system_info"), ToolDefinition("exec_command"),
-       ToolDefinition("read_file")});
+       ToolDefinition("read_file"), ToolDefinition("write_file"),
+       ToolDefinition("list_dir"), ToolDefinition("create_dir")});
 }
 
 nlohmann::json ToolDefinition(const std::string& name) {
@@ -87,6 +90,53 @@ nlohmann::json ToolDefinition(const std::string& name) {
              {{"type", "integer"},
               {"minimum", 1},
               {"maximum", 262144}}}}},
+          {"required", {"path"}},
+          {"additionalProperties", false}}},
+    };
+  }
+  if (name == "write_file") {
+    return {
+        {"name", "write_file"},
+        {"description", "Write UTF-8 content atomically to a file."},
+        {"platform", {"darwin", "windows"}},
+        {"idempotent", true},
+        {"params_schema",
+         {{"type", "object"},
+          {"properties",
+           {{"path",
+             {{"type", "string"}, {"minLength", 1}, {"maxLength", 32768}}},
+            {"content",
+             {{"type", "string"}, {"maxLength", kMaxWriteBytes}}}}},
+          {"required", {"path", "content"}},
+          {"additionalProperties", false}}},
+    };
+  }
+  if (name == "list_dir") {
+    return {
+        {"name", "list_dir"},
+        {"description", "List directory entries in deterministic name order."},
+        {"platform", {"darwin", "windows"}},
+        {"idempotent", true},
+        {"params_schema",
+         {{"type", "object"},
+          {"properties",
+           {{"path",
+             {{"type", "string"}, {"minLength", 1}, {"maxLength", 32768}}}}},
+          {"required", {"path"}},
+          {"additionalProperties", false}}},
+    };
+  }
+  if (name == "create_dir") {
+    return {
+        {"name", "create_dir"},
+        {"description", "Create a directory and any missing parents."},
+        {"platform", {"darwin", "windows"}},
+        {"idempotent", true},
+        {"params_schema",
+         {{"type", "object"},
+          {"properties",
+           {{"path",
+             {{"type", "string"}, {"minLength", 1}, {"maxLength", 32768}}}}},
           {"required", {"path"}},
           {"additionalProperties", false}}},
     };

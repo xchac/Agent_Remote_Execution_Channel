@@ -135,6 +135,9 @@ func registerTestAgent(t *testing.T, address, agentID, platform string) net.Conn
 		mustTool("system_info"),
 		mustTool("exec_command"),
 		mustTool("read_file"),
+		mustTool("write_file"),
+		mustTool("list_dir"),
+		mustTool("create_dir"),
 	}
 	if err := writeAgentMessage(conn, transport.Message{
 		Type:            "register",

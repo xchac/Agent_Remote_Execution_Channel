@@ -53,10 +53,10 @@ def wait_for_tools(base_url: str, token: str) -> list[dict]:
         status, tools = http_json(
             "GET", f"{base_url}/tools", token=token
         )
-        if status == 200 and isinstance(tools, list) and len(tools) == 3:
+        if status == 200 and isinstance(tools, list) and len(tools) == 6:
             return tools
         time.sleep(0.2)
-    raise RuntimeError("Mac data plane did not register all three tools")
+    raise RuntimeError("Mac data plane did not register all six tools")
 
 
 def stop_process(process: subprocess.Popen[str]) -> None:
@@ -145,7 +145,14 @@ def main() -> int:
                 f"{base_url}/session",
                 bootstrap=bootstrap,
                 body={
-                    "allowed_tools": ["system_info", "exec_command", "read_file"],
+                    "allowed_tools": [
+                        "system_info",
+                        "exec_command",
+                        "read_file",
+                        "write_file",
+                        "list_dir",
+                        "create_dir",
+                    ],
                     "ttl_seconds": 900,
                     "max_calls": 100,
                 },
@@ -158,6 +165,9 @@ def main() -> int:
                 "system_info",
                 "exec_command",
                 "read_file",
+                "write_file",
+                "list_dir",
+                "create_dir",
             }:
                 raise RuntimeError(f"unexpected tools: {tools}")
 

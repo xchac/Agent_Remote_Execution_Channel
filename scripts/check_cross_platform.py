@@ -21,7 +21,14 @@ from agent.arec_agent.client import (
 )
 
 
-TOOLS = ("system_info", "exec_command", "read_file")
+TOOLS = (
+    "system_info",
+    "exec_command",
+    "read_file",
+    "write_file",
+    "list_dir",
+    "create_dir",
+)
 
 
 def check_cross_platform(
@@ -33,7 +40,9 @@ def check_cross_platform(
     token = str(session["token"])
     tools = gateway.list_tools(token)
     platforms: set[str] = set()
+    available_names: set[str] = set()
     for tool in tools:
+        available_names.add(str(tool.get("name", "")))
         declared = tool.get("platform", [])
         if isinstance(declared, list):
             platforms.update(str(value) for value in declared)
@@ -43,6 +52,7 @@ def check_cross_platform(
             {
                 "event": "tool_registry",
                 "tool_count": len(tools),
+                "tools": sorted(available_names),
                 "platforms": sorted(platforms),
             },
             ensure_ascii=False,
@@ -51,6 +61,10 @@ def check_cross_platform(
     if platforms != {"darwin", "windows"}:
         raise GatewayError(
             f"both execution endpoints are required; registered platforms: {sorted(platforms)}"
+        )
+    if available_names != set(TOOLS):
+        raise GatewayError(
+            f"all six tools are required; registered tools: {sorted(available_names)}"
         )
 
     registry = IdempotencyRegistry()

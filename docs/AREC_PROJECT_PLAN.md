@@ -8,7 +8,7 @@
 >
 > 最终形态：Mac 控制面 + Mac/Windows 双执行端 + Python Agent
 
-> 实施状态（2026-10-21）：Windows M1-M3 已完成，Debug 单元测试和回环 mock gateway 集成测试通过。
+> 实施状态（2026-10-22）：M1-M4 已完成；M5 双端六工具代码、单元测试和验收脚本已就绪，等待 Mac/Windows 实际六工具联调。
 
 ## 1. 项目目标
 
@@ -678,4 +678,7 @@ deadline 到达
 
 ## 18. 当前步骤
 
-本轮只完成 M0 文档基线，不创建构建系统或业务代码。后续实施从 M1 Windows 协议骨架开始。
+- M1-M3：Windows 数据面、三工具、mock gateway 和可靠性测试已完成。
+- M4：Mac 网关、Python Agent、macOS 数据面及双平台三工具联调已完成。
+- M5：双端补齐 `write_file`、`list_dir`、`create_dir`，Agent 已切换到六工具范围。
+- 下一步：按 `docs/AREC_M5_RUNBOOK.md` 重新配置临时密钥，执行双平台六工具验收和审计检查。

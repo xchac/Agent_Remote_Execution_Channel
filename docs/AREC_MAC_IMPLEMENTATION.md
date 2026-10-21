@@ -19,17 +19,19 @@
 
 本文不在 Windows 本机运行。Windows 数据面的实现与本地 mock gateway 验收见总规划。
 
-首版 Mac 先完成最小 3 个工具：
+M4 阶段使用最小 3 个工具完成跨机闭环：
 
 - `system_info`
 - `exec_command`
 - `read_file`
 
-M5 再补齐：
+M5 已在双端补齐：
 
 - `write_file`
 - `list_dir`
 - `create_dir`
+
+完整六工具验收见 `docs/AREC_M5_RUNBOOK.md`。
 
 ## 2. 实施前冻结的契约
 
@@ -617,6 +619,9 @@ $env:AREC_HMAC_SECRET = '<REDACTED>'
 - token 验签和工具范围。
 - `system_info` 成功。
 - `read_file` 成功和截断。
+- `write_file` 原子写入和幂等结果。
+- `list_dir` 结构、排序和条目截断。
+- `create_dir` 新建、递归创建和已存在目录幂等。
 - `exec_command` 成功、非零退出码和超时。
 - 超时后进程组终止。
 - 幂等命中和冲突。

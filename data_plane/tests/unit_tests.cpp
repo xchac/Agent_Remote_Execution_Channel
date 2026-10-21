@@ -169,6 +169,9 @@ void test_execution_engine() {
         "system_info",
         "exec_command",
         "read_file",
+        "write_file",
+        "list_dir",
+        "create_dir",
     };
     const auto token = arec::make_capability_token(
         claims_for(session_id, all_tools),
@@ -247,6 +250,99 @@ void test_execution_engine() {
         truncated_response.result.at("bytes_read").get<std::size_t>() == 5U,
         "read_file should enforce max_bytes");
     std::filesystem::remove(temporary);
+
+    const std::filesystem::path tool_root =
+        std::filesystem::temp_directory_path() /
+        ("arec-tools-" + arec::sha256_hex(runtime_secret()));
+    const auto nested_directory = tool_root / "nested" / "child";
+    std::filesystem::remove_all(tool_root);
+
+    const auto create_response = engine.handle_request(
+        request_for(
+            "request-create-dir",
+            session_id,
+            "create_dir",
+            {{"path", nested_directory.u8string()}},
+            "idempotency-create-dir",
+            token));
+    expect(create_response.status == arec::Status::ok, "create_dir should succeed");
+    expect(
+        create_response.result.at("created").get<bool>(),
+        "first create_dir should create the directory");
+    expect(std::filesystem::is_directory(nested_directory), "create_dir path is missing");
+
+    const auto create_again = engine.handle_request(
+        request_for(
+            "request-create-dir-again",
+            session_id,
+            "create_dir",
+            {{"path", nested_directory.u8string()}},
+            "idempotency-create-dir-again",
+            token));
+    expect(create_again.status == arec::Status::ok, "existing directory should be accepted");
+    expect(
+        !create_again.result.at("created").get<bool>(),
+        "existing directory should report created=false");
+
+    const auto written_file = nested_directory / "written.txt";
+    const std::string written_content = "atomic write content";
+    const auto write_response = engine.handle_request(
+        request_for(
+            "request-write",
+            session_id,
+            "write_file",
+            {
+                {"path", written_file.u8string()},
+                {"content", written_content},
+            },
+            "idempotency-write",
+            token));
+    expect(write_response.status == arec::Status::ok, "write_file should succeed");
+    expect(
+        write_response.result.at("created").get<bool>(),
+        "first write should report created=true");
+    {
+        std::ifstream written_input(written_file, std::ios::binary);
+        std::string actual(
+            (std::istreambuf_iterator<char>(written_input)),
+            std::istreambuf_iterator<char>());
+        expect(actual == written_content, "write_file content mismatch");
+    }
+
+    const auto write_again = engine.handle_request(
+        request_for(
+            "request-write-again",
+            session_id,
+            "write_file",
+            {
+                {"path", written_file.u8string()},
+                {"content", "replacement content"},
+            },
+            "idempotency-write-again",
+            token));
+    expect(write_again.status == arec::Status::ok, "second write_file should succeed");
+    expect(
+        !write_again.result.at("created").get<bool>(),
+        "second write should report created=false");
+
+    const auto list_response = engine.handle_request(
+        request_for(
+            "request-list",
+            session_id,
+            "list_dir",
+            {{"path", nested_directory.u8string()}},
+            "idempotency-list",
+            token));
+    expect(list_response.status == arec::Status::ok, "list_dir should succeed");
+    const auto& entries = list_response.result.at("entries");
+    expect(entries.is_array() && entries.size() == 1U, "list_dir entry count mismatch");
+    expect(
+        entries.at(0).at("name").get<std::string>() == "written.txt",
+        "list_dir file name mismatch");
+    expect(
+        entries.at(0).at("type").get<std::string>() == "file",
+        "list_dir file type mismatch");
+    std::filesystem::remove_all(tool_root);
 
     const auto exec_response = engine.handle_request(
         request_for(

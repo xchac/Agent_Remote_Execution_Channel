@@ -518,6 +518,26 @@ func validateParams(tool string, params map[string]any) error {
 				return errors.New("max_bytes must be an integer between 1 and 262144")
 			}
 		}
+	case "write_file":
+		if err := onlyKeys(params, "path", "content"); err != nil {
+			return err
+		}
+		path, ok := params["path"].(string)
+		if !ok || strings.TrimSpace(path) == "" || len(path) > 32768 {
+			return errors.New("path must be a non-empty string up to 32768 bytes")
+		}
+		content, ok := params["content"].(string)
+		if !ok || len(content) > 1048576 {
+			return errors.New("content must be a string up to 1048576 bytes")
+		}
+	case "list_dir", "create_dir":
+		if err := onlyKeys(params, "path"); err != nil {
+			return err
+		}
+		path, ok := params["path"].(string)
+		if !ok || strings.TrimSpace(path) == "" || len(path) > 32768 {
+			return errors.New("path must be a non-empty string up to 32768 bytes")
+		}
 	default:
 		return errors.New("unsupported tool")
 	}

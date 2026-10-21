@@ -12,6 +12,8 @@
 #include <array>
 #include <cerrno>
 #include <chrono>
+#include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -150,6 +152,41 @@ bool ToolExecutor::ValidateParams(const std::string& tool,
     }
     return true;
   }
+  if (tool == "write_file") {
+    for (auto iterator = params.begin(); iterator != params.end(); ++iterator) {
+      if (iterator.key() != "path" && iterator.key() != "content") {
+        return fail("unknown write_file parameter");
+      }
+    }
+    if (!params.contains("path") || !params["path"].is_string() ||
+        !params.contains("content") || !params["content"].is_string()) {
+      return fail("path and content must be strings");
+    }
+    const std::string path = params["path"].get<std::string>();
+    const std::string content = params["content"].get<std::string>();
+    if (path.empty() || path.size() > 32768 || HasNullByte(path)) {
+      return fail("path must contain 1 to 32768 bytes without NUL");
+    }
+    if (content.size() > kMaxWriteBytes) {
+      return fail("content exceeds the 1 MiB limit");
+    }
+    return true;
+  }
+  if (tool == "list_dir" || tool == "create_dir") {
+    for (auto iterator = params.begin(); iterator != params.end(); ++iterator) {
+      if (iterator.key() != "path") {
+        return fail("unknown directory parameter");
+      }
+    }
+    if (!params.contains("path") || !params["path"].is_string()) {
+      return fail("path must be a string");
+    }
+    const std::string path = params["path"].get<std::string>();
+    if (path.empty() || path.size() > 32768 || HasNullByte(path)) {
+      return fail("path must contain 1 to 32768 bytes without NUL");
+    }
+    return true;
+  }
   return fail("unsupported tool");
 }
 
@@ -165,6 +202,15 @@ ToolResult ToolExecutor::Execute(const std::string& tool,
   }
   if (tool == "read_file") {
     return ReadFile(params);
+  }
+  if (tool == "write_file") {
+    return WriteFile(params);
+  }
+  if (tool == "list_dir") {
+    return ListDir(params);
+  }
+  if (tool == "create_dir") {
+    return CreateDir(params);
   }
   if (tool == "exec_command") {
     return RunCommand(params, deadline_ms, cancelled);
@@ -221,6 +267,178 @@ ToolResult ToolExecutor::ReadFile(const nlohmann::json& params) {
           {"content", content},
           {"bytes_read", content.size()},
           {"truncated", truncated},
+      },
+      NowRfc3339(),
+  };
+}
+
+ToolResult ToolExecutor::WriteFile(const nlohmann::json& params) {
+  const std::string path = params.at("path").get<std::string>();
+  const std::string content = params.at("content").get<std::string>();
+  std::error_code error;
+  const std::filesystem::path target(path);
+  std::filesystem::path parent = target.parent_path();
+  if (parent.empty()) {
+    parent = std::filesystem::current_path(error);
+    if (error) {
+      return Failure(kErrorExecutionFailed, "working directory is unavailable");
+    }
+  }
+  if (!std::filesystem::is_directory(parent, error) || error) {
+    return Failure(kErrorExecutionFailed, "parent directory is unavailable");
+  }
+  const bool created = !std::filesystem::exists(target, error);
+  if (error) {
+    return Failure(kErrorExecutionFailed, "target file state is unavailable");
+  }
+
+  std::string temporary =
+      (parent / std::filesystem::path(".arec-tmp-XXXXXX")).string();
+  std::vector<char> temporary_buffer(temporary.begin(), temporary.end());
+  temporary_buffer.push_back('\0');
+  const int descriptor = mkstemp(temporary_buffer.data());
+  if (descriptor < 0) {
+    return Failure(kErrorExecutionFailed, "temporary file cannot be created");
+  }
+
+  bool write_failed = false;
+  std::size_t offset = 0;
+  while (offset < content.size()) {
+    const ssize_t written =
+        write(descriptor, content.data() + offset, content.size() - offset);
+    if (written > 0) {
+      offset += static_cast<std::size_t>(written);
+      continue;
+    }
+    if (written < 0 && errno == EINTR) {
+      continue;
+    }
+    write_failed = true;
+    break;
+  }
+  if (!write_failed && fsync(descriptor) != 0) {
+    write_failed = true;
+  }
+  if (close(descriptor) != 0) {
+    write_failed = true;
+  }
+
+  const std::filesystem::path temporary_path(temporary_buffer.data());
+  if (write_failed) {
+    unlink(temporary_path.c_str());
+    return Failure(kErrorExecutionFailed, "file content could not be written");
+  }
+
+  std::filesystem::rename(temporary_path, target, error);
+  if (error) {
+    unlink(temporary_path.c_str());
+    return Failure(kErrorExecutionFailed, "atomic file replacement failed");
+  }
+
+  return {
+      kStatusOK,
+      std::nullopt,
+      false,
+      "",
+      {
+          {"path", path},
+          {"bytes_written", content.size()},
+          {"created", created},
+      },
+      NowRfc3339(),
+  };
+}
+
+ToolResult ToolExecutor::ListDir(const nlohmann::json& params) {
+  const std::string path = params.at("path").get<std::string>();
+  std::error_code error;
+  const std::filesystem::path directory(path);
+  if (!std::filesystem::is_directory(directory, error) || error) {
+    return Failure(kErrorExecutionFailed, "path is not a readable directory");
+  }
+
+  std::vector<nlohmann::json> entries;
+  entries.reserve(kMaxDirectoryEntries + 1U);
+  std::filesystem::directory_iterator iterator(
+      directory, std::filesystem::directory_options::skip_permission_denied,
+      error);
+  if (error) {
+    return Failure(kErrorExecutionFailed, "directory cannot be opened");
+  }
+  const std::filesystem::directory_iterator end;
+  while (iterator != end && entries.size() <= kMaxDirectoryEntries) {
+    const auto entry = *iterator;
+    const std::string name = entry.path().filename().string();
+    std::error_code status_error;
+    const auto status = entry.symlink_status(status_error);
+    if (status_error) {
+      return Failure(kErrorExecutionFailed, "directory entry cannot be inspected");
+    }
+
+    std::string type = "other";
+    std::uint64_t size = 0;
+    if (std::filesystem::is_regular_file(status)) {
+      type = "file";
+      size = entry.file_size(status_error);
+      if (status_error) {
+        size = 0;
+      }
+    } else if (std::filesystem::is_directory(status)) {
+      type = "directory";
+    } else if (std::filesystem::is_symlink(status)) {
+      type = "symlink";
+    }
+    entries.push_back({
+        {"name", name},
+        {"type", type},
+        {"size", size},
+    });
+    iterator.increment(error);
+    if (error) {
+      return Failure(kErrorExecutionFailed, "directory iteration failed");
+    }
+  }
+
+  const bool truncated = entries.size() > kMaxDirectoryEntries;
+  if (truncated) {
+    entries.resize(kMaxDirectoryEntries);
+  }
+  std::sort(entries.begin(), entries.end(),
+            [](const auto& left, const auto& right) {
+              return left.at("name").get<std::string>() <
+                     right.at("name").get<std::string>();
+            });
+  return {
+      kStatusOK,
+      std::nullopt,
+      false,
+      "",
+      {
+          {"path", path},
+          {"entries", entries},
+          {"count", entries.size()},
+          {"truncated", truncated},
+      },
+      NowRfc3339(),
+  };
+}
+
+ToolResult ToolExecutor::CreateDir(const nlohmann::json& params) {
+  const std::string path = params.at("path").get<std::string>();
+  std::error_code error;
+  const std::filesystem::path directory(path);
+  const bool created = std::filesystem::create_directories(directory, error);
+  if (error || !std::filesystem::is_directory(directory, error)) {
+    return Failure(kErrorExecutionFailed, "directory could not be created");
+  }
+  return {
+      kStatusOK,
+      std::nullopt,
+      false,
+      "",
+      {
+          {"path", path},
+          {"created", created},
       },
       NowRfc3339(),
   };

@@ -9,6 +9,8 @@
 namespace arec {
 
 constexpr std::size_t kToolOutputLimit = 256U * 1024U;
+constexpr std::size_t kMaxWriteBytes = 1U * 1024U * 1024U;
+constexpr std::size_t kMaxDirectoryEntries = 256U;
 
 struct ToolResult {
   std::string status;
@@ -34,6 +36,9 @@ class ToolExecutor {
  private:
   static ToolResult SystemInfo();
   static ToolResult ReadFile(const nlohmann::json& params);
+  static ToolResult WriteFile(const nlohmann::json& params);
+  static ToolResult ListDir(const nlohmann::json& params);
+  static ToolResult CreateDir(const nlohmann::json& params);
   static ToolResult RunCommand(const nlohmann::json& params, int deadline_ms,
                                const Cancelled& cancelled);
 };

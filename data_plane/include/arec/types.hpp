@@ -12,6 +12,8 @@ namespace arec {
 
 constexpr std::size_t kMaxFrameBytes = 4U * 1024U * 1024U;
 constexpr std::size_t kMaxToolOutputBytes = 256U * 1024U;
+constexpr std::size_t kMaxWriteBytes = 1U * 1024U * 1024U;
+constexpr std::size_t kMaxDirectoryEntries = 256U;
 constexpr std::int64_t kDefaultDeadlineMs = 5000;
 constexpr std::int64_t kMaxDeadlineMs = 30000;
 constexpr std::size_t kDefaultCacheCapacity = 1024;

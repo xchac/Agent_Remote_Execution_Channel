@@ -93,7 +93,7 @@ void expect_registration(const nlohmann::json& registration) {
         registration.at("platform").get<std::string>() == "windows",
         "registration platform mismatch");
     const auto& tools = registration.at("tools");
-    expect(tools.is_array() && tools.size() == 3U, "registration should expose three tools");
+    expect(tools.is_array() && tools.size() == 6U, "registration should expose six tools");
     for (const auto& tool : tools) {
         expect(tool.at("name").is_string(), "registered tool name is invalid");
         expect(tool.at("platform").is_array(), "registered tool platform is invalid");
@@ -122,7 +122,14 @@ int main() {
         claims.version = 1;
         claims.token_id = "integration-token";
         claims.session_id = session_id;
-        claims.allowed_tools = {"system_info", "exec_command", "read_file"};
+        claims.allowed_tools = {
+            "system_info",
+            "exec_command",
+            "read_file",
+            "write_file",
+            "list_dir",
+            "create_dir",
+        };
         claims.issued_at = arec::unix_time_seconds();
         claims.expires_at = claims.issued_at + 120;
         claims.max_calls = 100;

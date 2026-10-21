@@ -152,7 +152,7 @@ python scripts/check_cross_platform.py
 预期输出包含：
 
 ```text
-{"event":"tool_registry","tool_count":3,"platforms":["darwin","windows"]}
+{"event":"tool_registry","tool_count":6,"platforms":["darwin","windows"]}
 {"event":"target_checked","target":"darwin","platform":"darwin",...}
 {"event":"target_checked","target":"windows","platform":"windows",...}
 {"event":"target_checked","target":"auto","platform":"darwin",...}

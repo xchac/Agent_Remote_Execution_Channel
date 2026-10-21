@@ -48,6 +48,9 @@ private:
 
     ToolResponse execute_system_info();
     ToolResponse execute_read_file(const nlohmann::json& params);
+    ToolResponse execute_write_file(const nlohmann::json& params);
+    ToolResponse execute_list_dir(const nlohmann::json& params);
+    ToolResponse execute_create_dir(const nlohmann::json& params);
     ToolResponse execute_command(const nlohmann::json& params, std::int64_t deadline_ms);
 
     void store_request_state(

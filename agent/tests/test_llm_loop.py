@@ -10,8 +10,10 @@ class FakeGateway:
     def __init__(self, unauthorized=False) -> None:
         self.unauthorized = unauthorized
         self.execute_calls = []
+        self.allowed_tools = ()
 
     def create_session(self, allowed_tools):
+        self.allowed_tools = tuple(allowed_tools)
         return {"token": "secret-token", "session_id": "session-1"}
 
     def list_tools(self, token):
@@ -91,6 +93,17 @@ class ToolLoopTest(unittest.TestCase):
         self.assertEqual(len(gateway.execute_calls), 1)
         self.assertTrue(gateway.execute_calls[0]["idempotency_key"])
         self.assertEqual(events[0]["request_id"], "request-1")
+        self.assertEqual(
+            set(gateway.allowed_tools),
+            {
+                "system_info",
+                "exec_command",
+                "read_file",
+                "write_file",
+                "list_dir",
+                "create_dir",
+            },
+        )
 
     def test_unauthorized_terminates_loop(self) -> None:
         model = FakeModel(

@@ -8,9 +8,10 @@ macOS 或 Windows 数据面。数据面使用 4 字节大端长度前缀的 JSON
 
 - Go 控制面网关、Python Agent 和 macOS 数据面。
 - Windows M1-M3 数据面、Job Object 进程树终止及 mock gateway 测试。
-- `system_info`、`exec_command`、`read_file`，三目标路由、幂等、限流和 JSONL 审计。
+- `system_info`、`exec_command`、`read_file`、`write_file`、`list_dir`、`create_dir`，三目标路由、幂等、限流和 JSONL 审计。
 
-实际双机联调步骤见 [docs/AREC_M4_RUNBOOK.md](docs/AREC_M4_RUNBOOK.md)。
+双机联调步骤见 [docs/AREC_M4_RUNBOOK.md](docs/AREC_M4_RUNBOOK.md)，
+六工具完整验收见 [docs/AREC_M5_RUNBOOK.md](docs/AREC_M5_RUNBOOK.md)。
 
 ## macOS 构建
 

@@ -427,6 +427,61 @@ nlohmann::json ExecutionEngine::tool_definitions() {
                 },
             },
         },
+        {
+            "write_file",
+            "Write UTF-8 content atomically to a file",
+            {"darwin", "windows"},
+            true,
+            {
+                {"type", "object"},
+                {"required", {"path", "content"}},
+                {
+                    "properties",
+                    {
+                        {"path", {{"type", "string"}, {"minLength", 1}, {"maxLength", 32768}}},
+                        {
+                            "content",
+                            {
+                                {"type", "string"},
+                                {"maxLength", kMaxWriteBytes},
+                            },
+                        },
+                    },
+                },
+            },
+        },
+        {
+            "list_dir",
+            "List directory entries in deterministic name order",
+            {"darwin", "windows"},
+            true,
+            {
+                {"type", "object"},
+                {"required", {"path"}},
+                {
+                    "properties",
+                    {
+                        {"path", {{"type", "string"}, {"minLength", 1}, {"maxLength", 32768}}},
+                    },
+                },
+            },
+        },
+        {
+            "create_dir",
+            "Create a directory and any missing parents",
+            {"darwin", "windows"},
+            true,
+            {
+                {"type", "object"},
+                {"required", {"path"}},
+                {
+                    "properties",
+                    {
+                        {"path", {{"type", "string"}, {"minLength", 1}, {"maxLength", 32768}}},
+                    },
+                },
+            },
+        },
     };
 
     nlohmann::json result = nlohmann::json::array();
@@ -647,6 +702,15 @@ ToolResponse ExecutionEngine::execute_tool(
     if (tool == "read_file") {
         return execute_read_file(params);
     }
+    if (tool == "write_file") {
+        return execute_write_file(params);
+    }
+    if (tool == "list_dir") {
+        return execute_list_dir(params);
+    }
+    if (tool == "create_dir") {
+        return execute_create_dir(params);
+    }
     if (tool == "exec_command") {
         return execute_command(params, deadline_ms);
     }
@@ -758,6 +822,183 @@ ToolResponse ExecutionEngine::execute_read_file(const nlohmann::json& params) {
         {"content", content},
         {"bytes_read", bytes_read},
         {"truncated", file_size > bytes_read},
+    };
+    return response;
+}
+
+ToolResponse ExecutionEngine::execute_write_file(const nlohmann::json& params) {
+    const std::string path = params.at("path").get<std::string>();
+    const std::string content = params.at("content").get<std::string>();
+    if (path.empty() || path.size() > 32768U) {
+        throw std::invalid_argument("path is invalid");
+    }
+    if (content.size() > kMaxWriteBytes) {
+        throw std::invalid_argument("content exceeds the 1 MiB limit");
+    }
+
+    std::error_code error;
+    const auto target = std::filesystem::u8path(path);
+    auto parent = target.parent_path();
+    if (parent.empty()) {
+        parent = std::filesystem::current_path(error);
+        if (error) {
+            return failure("EXECUTION_FAILED", "working directory is unavailable", false, platform_);
+        }
+    }
+    if (!std::filesystem::is_directory(parent, error) || error) {
+        return failure("EXECUTION_FAILED", "parent directory is unavailable", false, platform_);
+    }
+
+    const bool created = !std::filesystem::exists(target, error);
+    if (error) {
+        return failure("EXECUTION_FAILED", "target file state is unavailable", false, platform_);
+    }
+
+    const std::string suffix = base64url_encode(random_bytes(12));
+    const auto temporary =
+        parent / std::filesystem::u8path(
+            target.filename().u8string() + ".arec-tmp-" + suffix);
+
+    try {
+        std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+        if (!output) {
+            return failure("EXECUTION_FAILED", "temporary file cannot be created", false, platform_);
+        }
+        output.write(content.data(), static_cast<std::streamsize>(content.size()));
+        output.flush();
+        if (!output) {
+            output.close();
+            std::filesystem::remove(temporary, error);
+            return failure("EXECUTION_FAILED", "file content could not be written", false, platform_);
+        }
+        output.close();
+
+        if (!MoveFileExW(
+                temporary.c_str(),
+                target.c_str(),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+            std::filesystem::remove(temporary, error);
+            return failure("EXECUTION_FAILED", "atomic file replacement failed", false, platform_);
+        }
+    } catch (const std::exception&) {
+        std::filesystem::remove(temporary, error);
+        return failure("EXECUTION_FAILED", "file write failed", false, platform_);
+    }
+
+    ToolResponse response;
+    response.status = Status::ok;
+    response.platform = platform_;
+    response.executed_at = utc_now_iso8601();
+    response.result = {
+        {"path", path},
+        {"bytes_written", content.size()},
+        {"created", created},
+    };
+    return response;
+}
+
+ToolResponse ExecutionEngine::execute_list_dir(const nlohmann::json& params) {
+    const std::string path = params.at("path").get<std::string>();
+    if (path.empty() || path.size() > 32768U) {
+        throw std::invalid_argument("path is invalid");
+    }
+
+    std::error_code error;
+    const auto directory = std::filesystem::u8path(path);
+    if (!std::filesystem::is_directory(directory, error) || error) {
+        return failure("EXECUTION_FAILED", "path is not a readable directory", false, platform_);
+    }
+
+    std::vector<nlohmann::json> entries;
+    entries.reserve(kMaxDirectoryEntries + 1U);
+    std::filesystem::directory_iterator iterator(
+        directory,
+        std::filesystem::directory_options::skip_permission_denied,
+        error);
+    if (error) {
+        return failure("EXECUTION_FAILED", "directory cannot be opened", false, platform_);
+    }
+
+    const std::filesystem::directory_iterator end;
+    while (iterator != end && entries.size() <= kMaxDirectoryEntries) {
+        const auto entry = *iterator;
+        const std::string name = entry.path().filename().u8string();
+        std::error_code status_error;
+        const auto status = entry.symlink_status(status_error);
+        if (status_error) {
+            return failure("EXECUTION_FAILED", "directory entry cannot be inspected", false, platform_);
+        }
+
+        std::string type = "other";
+        std::uint64_t size = 0;
+        if (std::filesystem::is_regular_file(status)) {
+            type = "file";
+            size = entry.file_size(status_error);
+            if (status_error) {
+                size = 0;
+            }
+        } else if (std::filesystem::is_directory(status)) {
+            type = "directory";
+        } else if (std::filesystem::is_symlink(status)) {
+            type = "symlink";
+        }
+
+        entries.push_back({
+            {"name", name},
+            {"type", type},
+            {"size", size},
+        });
+        iterator.increment(error);
+        if (error) {
+            return failure("EXECUTION_FAILED", "directory iteration failed", false, platform_);
+        }
+    }
+
+    const bool truncated = entries.size() > kMaxDirectoryEntries;
+    if (truncated) {
+        entries.resize(kMaxDirectoryEntries);
+    }
+    std::sort(
+        entries.begin(),
+        entries.end(),
+        [](const auto& left, const auto& right) {
+            return left.at("name").get<std::string>() <
+                right.at("name").get<std::string>();
+        });
+
+    ToolResponse response;
+    response.status = Status::ok;
+    response.platform = platform_;
+    response.executed_at = utc_now_iso8601();
+    response.result = {
+        {"path", path},
+        {"entries", entries},
+        {"count", entries.size()},
+        {"truncated", truncated},
+    };
+    return response;
+}
+
+ToolResponse ExecutionEngine::execute_create_dir(const nlohmann::json& params) {
+    const std::string path = params.at("path").get<std::string>();
+    if (path.empty() || path.size() > 32768U) {
+        throw std::invalid_argument("path is invalid");
+    }
+
+    std::error_code error;
+    const auto directory = std::filesystem::u8path(path);
+    const bool created = std::filesystem::create_directories(directory, error);
+    if (error || !std::filesystem::is_directory(directory, error)) {
+        return failure("EXECUTION_FAILED", "directory could not be created", false, platform_);
+    }
+
+    ToolResponse response;
+    response.status = Status::ok;
+    response.platform = platform_;
+    response.executed_at = utc_now_iso8601();
+    response.result = {
+        {"path", path},
+        {"created", created},
     };
     return response;
 }

@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <string>
@@ -144,6 +145,8 @@ void TestCache() {
 }
 
 void TestTools() {
+  const auto definitions = arec::ToolDefinitions();
+  Check(definitions.size() == 6, "tool registry should expose six tools");
   const auto system = arec::ToolExecutor::Execute(
       "system_info", nlohmann::json::object());
   Check(system.status == "ok" && system.result.contains("hostname") &&
@@ -163,6 +166,43 @@ void TestTools() {
             read.result["truncated"].get<bool>(),
         "read_file truncation failed");
   std::filesystem::remove(path);
+
+  const auto tool_root =
+      std::filesystem::temp_directory_path() /
+      ("arec-tools-test-" + std::to_string(getpid()));
+  const auto nested = tool_root / "nested" / "child";
+  std::filesystem::remove_all(tool_root);
+  const auto created = arec::ToolExecutor::Execute(
+      "create_dir", {{"path", nested.string()}});
+  Check(created.status == "ok" && created.result["created"].get<bool>() &&
+            std::filesystem::is_directory(nested),
+        "create_dir failed");
+  const auto created_again = arec::ToolExecutor::Execute(
+      "create_dir", {{"path", nested.string()}});
+  Check(created_again.status == "ok" &&
+            !created_again.result["created"].get<bool>(),
+        "existing create_dir should report created=false");
+
+  const auto written = nested / "written.txt";
+  const std::string content = "atomic content";
+  const auto write = arec::ToolExecutor::Execute(
+      "write_file", {{"path", written.string()}, {"content", content}});
+  Check(write.status == "ok" && write.result["created"].get<bool>(),
+        "write_file failed");
+  {
+    std::ifstream input(written, std::ios::binary);
+    const std::string actual((std::istreambuf_iterator<char>(input)),
+                             std::istreambuf_iterator<char>());
+    Check(actual == content, "write_file content mismatch");
+  }
+
+  const auto list = arec::ToolExecutor::Execute(
+      "list_dir", {{"path", nested.string()}});
+  Check(list.status == "ok" && list.result["entries"].size() == 1 &&
+            list.result["entries"][0]["name"] == "written.txt" &&
+            list.result["entries"][0]["type"] == "file",
+        "list_dir failed");
+  std::filesystem::remove_all(tool_root);
 
   const auto command = arec::ToolExecutor::Execute(
       "exec_command", {{"command", "printf hello; printf error >&2; exit 7"}},
@@ -206,7 +246,8 @@ void TestDataPlaneIntegration() {
     const auto registration = ReadJson(socket, gateway_decoder);
     Check(registration["type"] == "register" &&
               registration["platform"] == "darwin" &&
-              registration["agent_id"] == "mac-integration",
+              registration["agent_id"] == "mac-integration" &&
+              registration["tools"].size() == 6,
           "unexpected registration");
     SendJson(socket, {{"type", "register_ack"},
                       {"protocol_version", "1"},
@@ -216,7 +257,9 @@ void TestDataPlaneIntegration() {
     payload.version = 1;
     payload.token_id = "token-integration";
     payload.session_id = "session-integration";
-    payload.allowed_tools = {"system_info", "exec_command", "read_file"};
+    payload.allowed_tools = {
+        "system_info", "exec_command", "read_file",
+        "write_file", "list_dir", "create_dir"};
     payload.issued_at = static_cast<std::int64_t>(std::time(nullptr));
     payload.expires_at = payload.issued_at + 60;
     payload.max_calls = 100;

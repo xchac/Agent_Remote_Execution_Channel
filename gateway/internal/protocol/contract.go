@@ -83,6 +83,49 @@ var SupportedTools = []ToolDefinition{
 			"additionalProperties": false,
 		},
 	},
+	{
+		Name:        "write_file",
+		Description: "Write UTF-8 content atomically to a file.",
+		Platform:    []string{"darwin", "windows"},
+		Idempotent:  true,
+		ParamsSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"path":    map[string]any{"type": "string", "minLength": 1, "maxLength": 32768},
+				"content": map[string]any{"type": "string", "maxLength": 1048576},
+			},
+			"required":             []string{"path", "content"},
+			"additionalProperties": false,
+		},
+	},
+	{
+		Name:        "list_dir",
+		Description: "List directory entries in deterministic name order.",
+		Platform:    []string{"darwin", "windows"},
+		Idempotent:  true,
+		ParamsSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"path": map[string]any{"type": "string", "minLength": 1, "maxLength": 32768},
+			},
+			"required":             []string{"path"},
+			"additionalProperties": false,
+		},
+	},
+	{
+		Name:        "create_dir",
+		Description: "Create a directory and any missing parents.",
+		Platform:    []string{"darwin", "windows"},
+		Idempotent:  true,
+		ParamsSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"path": map[string]any{"type": "string", "minLength": 1, "maxLength": 32768},
+			},
+			"required":             []string{"path"},
+			"additionalProperties": false,
+		},
+	},
 }
 
 func ToolByName(name string) (ToolDefinition, bool) {

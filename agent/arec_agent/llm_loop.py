@@ -6,6 +6,15 @@ from typing import Any, Callable
 
 from .client import GatewayClient, GatewayError, IdempotencyRegistry
 
+ALL_TOOLS = (
+    "system_info",
+    "exec_command",
+    "read_file",
+    "write_file",
+    "list_dir",
+    "create_dir",
+)
+
 
 @dataclass
 class ModelConfig:
@@ -40,7 +49,7 @@ class ToolLoop:
         self._model_client = model_client
 
     def run(self, prompt: str, *, target: str = "auto") -> str:
-        session = self._gateway.create_session(("system_info", "exec_command", "read_file"))
+        session = self._gateway.create_session(ALL_TOOLS)
         token = str(session["token"])
         tools = self._gateway.list_tools(token)
         available = {tool["name"]: tool for tool in tools}
